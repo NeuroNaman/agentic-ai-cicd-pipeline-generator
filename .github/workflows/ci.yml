@@ -89,8 +89,8 @@ jobs:
             ${{ runner.os }}-pip-
 
       - name: Install linting tools
-        run: |
-          pip install ruff mypy
+        run: pip install ruff mypy
+        continue-on-error: true
 
       # Unit I: Shell commands in steps
       - name: Run Ruff linter
@@ -105,7 +105,6 @@ jobs:
   test-backend:
     name: "Backend Tests (Python ${{ matrix.python-version }})"
     runs-on: ubuntu-latest
-    needs: []                      # Run independently, don't wait for lint
 
     # Unit I: Matrix strategy — test on multiple Python versions
     strategy:
