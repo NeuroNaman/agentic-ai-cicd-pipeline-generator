@@ -1,0 +1,70 @@
+# ============================================================
+# CIForge — .dockerignore
+# Demonstrates: Unit II — Build context & .dockerignore
+#
+# These files are EXCLUDED from the Docker build context.
+# Smaller context = faster builds, smaller images.
+# ============================================================
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments (never copy these into images)
+venv/
+venv312/
+.venv/
+env/
+
+# Tests & coverage (not needed in production image)
+tests/
+test_*.py
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Development & editor files
+.git/
+.gitignore
+.env
+.env.*
+!.env.example
+*.md
+.vscode/
+.idea/
+
+# Docker files themselves
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Node / Next.js (for backend image)
+ciforge-web/
+node_modules/
+.next/
+
+# Test output and generated pipelines
+test_repos/
+*_test/
+*_test2/
+docker_test*/
+spring_test*/
+fastapi_docker_test/
+jenkins_full_test/
+
+# Misc
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

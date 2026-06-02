@@ -1,0 +1,124 @@
+# ============================================================
+# Agentic AI CI/CD Pipeline Generator — .gitignore
+# ============================================================
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+share/python-wheels/
+*.manifest
+*.spec
+
+# ── Virtual Environments ─────────────────────────────────────
+venv/
+venv312/
+.venv/
+env/
+ENV/
+.env
+.env.local
+.env.*.local
+.env.production
+
+# ── Poetry ───────────────────────────────────────────────────
+# Keep poetry.lock for reproducible installs
+# poetry.lock  ← do NOT ignore this
+
+# ── Testing & Coverage ───────────────────────────────────────
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+nosetests.xml
+test-results/
+junit.xml
+
+# ── Type Checking ────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyright/
+
+# ── Linting ──────────────────────────────────────────────────
+.ruff_cache/
+
+# ── IDE & Editors ────────────────────────────────────────────
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Node.js / Frontend ───────────────────────────────────────
+node_modules/
+ciforge-web/node_modules/
+ciforge-web/.next/
+ciforge-web/out/
+ciforge-web/dist/
+ciforge-web/.npm
+ciforge-web/.nuxt
+ciforge-web/.output
+ciforge-web/.cache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.tsbuildinfo
+
+# ── Next.js ──────────────────────────────────────────────────
+.next/
+out/
+next-env.d.ts
+
+# ── Docker ───────────────────────────────────────────────────
+.dockerignore.local
+
+# ── Secrets & Keys ───────────────────────────────────────────
+*.pem
+*.key
+*.cert
+*.p12
+secrets/
+.secrets/
+
+# ── Temporary Files ──────────────────────────────────────────
+tmp/
+temp/
+*.tmp
+*.temp
+*.log
+logs/
+
+# ── Generated Pipeline Outputs ───────────────────────────────
+pipeline_outputs/
+generated_pipelines/
+/tmp/ciforge-*/
+
+# ── Database ─────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── OS Files ─────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini

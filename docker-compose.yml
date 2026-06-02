@@ -1,0 +1,132 @@
+# ============================================================
+# CIForge — docker-compose.yml
+# Demonstrates: Unit III — Microservices with Docker Compose
+#
+# Concepts covered:
+#   - YAML structure: version, services, volumes, networks
+#   - Multi-container app (backend + frontend)
+#   - Service dependency ordering (depends_on)
+#   - Environment variables and .env files
+#   - Named volumes for persistent data
+#   - Custom bridge network (container DNS)
+#   - Port mapping (host:container)
+#   - Health checks for service readiness
+#   - Build context vs pre-built image
+# ============================================================
+
+services:
+
+  # ── Backend: FastAPI (Python) ───────────────────────────────
+  backend:
+    # Build from local Dockerfile (Unit II — image building)
+    build:
+      context: .                    # Build context = project root
+      dockerfile: Dockerfile        # Which Dockerfile to use
+      target: runtime               # Use the 'runtime' stage (multi-stage)
+    
+    # Container name (instead of auto-generated name)
+    container_name: ciforge-backend
+
+    # Port mapping: host_port:container_port
+    # Access at http://localhost:8000
+    ports:
+      - "8000:8000"
+
+    # Environment variables passed into the container
+    # These override defaults defined in the image
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+      # Load from .env file (secrets should never be hardcoded)
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+
+    # Load additional env vars from .env file
+    env_file:
+      - .env
+
+    # Named volume: persists pipeline history between restarts
+    volumes:
+      - pipeline_data:/app/data
+      # Bind mount for local dev (changes reflect without rebuild)
+      # Comment this out for production
+      - ./src:/app/src:ro
+
+    # Connect to the shared network (enables DNS by service name)
+    networks:
+      - ciforge-network
+
+    # Restart policy: always restart unless manually stopped
+    restart: unless-stopped
+
+    # Health check — depends_on uses this to know when backend is ready
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ── Frontend: Next.js ───────────────────────────────────────
+  frontend:
+    build:
+      context: ./ciforge-web        # Build context = web subfolder
+      dockerfile: Dockerfile
+      args:
+        # Pass API URL as build argument to Next.js
+        # (baked into the JS bundle at build time)
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    
+    container_name: ciforge-frontend
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      # Fix NextAuth "UntrustedHost" error in Docker
+      - AUTH_TRUST_HOST=true
+      - NEXTAUTH_URL=http://localhost:3000
+      - AUTH_SECRET=${AUTH_SECRET:-supersecret-docker-dev-key-change-in-prod}
+      - NEXTAUTH_SECRET=${AUTH_SECRET:-supersecret-docker-dev-key-change-in-prod}
+      # Server-side: use Docker service name to reach backend
+      - API_URL=http://backend:8000
+      - CIFORGE_API_URL=http://backend:8000
+
+    # Allow frontend container to reach host machine's ports
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    networks:
+      - ciforge-network
+
+    # Service dependency: wait for backend to be healthy before starting
+    depends_on:
+      backend:
+        condition: service_started   # Start once backend container is up
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+# ── Named Volumes ──────────────────────────────────────────────
+# Docker manages these — data persists across container restarts
+volumes:
+  pipeline_data:
+    driver: local                   # Store on the host machine
+
+# ── Custom Bridge Network ──────────────────────────────────────
+# Services on the same network can reach each other by service name
+# e.g., frontend can call http://backend:8000 (Docker DNS)
+networks:
+  ciforge-network:
+    driver: bridge                  # Default network type
+    name: ciforge-net

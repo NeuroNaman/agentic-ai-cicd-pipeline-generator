@@ -1,0 +1,286 @@
+# ============================================================
+# CIForge — GitHub Actions CI/CD Workflow
+# Demonstrates: Unit I — GitHub Actions Automation
+#
+# Concepts covered:
+#   - Workflow triggers: push, pull_request, schedule, manual
+#   - Jobs and job dependencies (needs)
+#   - Matrix strategy (test on multiple Python versions)
+#   - Steps and shell commands
+#   - Marketplace actions (checkout, setup-python, cache)
+#   - Language-specific actions (setup-python, setup-node)
+#   - Caching for faster builds (pip, npm)
+#   - Docker image building in CI
+#   - Pushing to GitHub Container Registry (GHCR)
+#   - GitHub-hosted runners (ubuntu-latest)
+#   - Environment secrets
+# ============================================================
+
+name: CIForge CI/CD
+
+# ── Triggers ──────────────────────────────────────────────────
+# Unit I: Workflow triggers
+on:
+  # Trigger on push to main/develop branches
+  push:
+    branches: [main, master, develop]
+    paths-ignore:
+      - "*.md"                      # Skip docs-only changes
+      - "docs/**"
+
+  # Trigger on pull requests targeting main
+  pull_request:
+    branches: [main, master]
+
+  # Scheduled trigger: run tests every day at midnight UTC
+  # Unit I: schedule trigger
+  schedule:
+    - cron: "0 0 * * *"            # Daily at 00:00 UTC
+
+  # Manual trigger via GitHub UI or API
+  # Unit I: manual workflow (workflow_dispatch)
+  workflow_dispatch:
+    inputs:
+      run_docker_build:
+        description: "Build and push Docker images?"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+# ── Global Environment Variables ──────────────────────────────
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+  # GitHub Container Registry image names
+  BACKEND_IMAGE: "ghcr.io/${{ github.repository }}/backend"
+  FRONTEND_IMAGE: "ghcr.io/${{ github.repository }}/frontend"
+
+# ── Jobs ──────────────────────────────────────────────────────
+jobs:
+
+  # ── Job 1: Lint & Type Check ────────────────────────────────
+  lint:
+    name: Lint & Type Check
+    # Unit I: GitHub-hosted runner
+    runs-on: ubuntu-latest
+
+    steps:
+      # Unit I: Marketplace action — checkout code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Unit I: Language-specific action — set up Python
+      - name: "Set up Python ${{ env.PYTHON_VERSION }}"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # Unit I: Caching for faster builds
+      # Cache pip packages — key changes when requirements change
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install linting tools
+        run: |
+          pip install ruff mypy
+
+      # Unit I: Shell commands in steps
+      - name: Run Ruff linter
+        run: ruff check . --output-format=github
+
+      - name: Run Mypy type checker
+        run: mypy src/ --ignore-missing-imports
+        continue-on-error: true    # Don't fail pipeline on type errors
+
+  # ── Job 2: Backend Tests (Matrix Strategy) ──────────────────
+  test-backend:
+    name: "Backend Tests (Python ${{ matrix.python-version }})"
+    runs-on: ubuntu-latest
+    needs: lint                    # Wait for lint to pass first
+
+    # Unit I: Matrix strategy — test on multiple Python versions
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+      fail-fast: false             # Don't cancel other versions on failure
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: "Set up Python ${{ matrix.python-version }}"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip               # Built-in pip caching shortcut
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Run tests with coverage
+        run: |
+          poetry run pytest tests/ \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            -v
+        env:
+          # Use dummy keys for testing — no real API calls
+          OPENAI_API_KEY: test-key-for-ci
+          LLM_PROVIDER: mock
+
+      # Upload coverage to GitHub as an artifact
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-${{ matrix.python-version }}
+          path: coverage.xml
+          retention-days: 7
+
+  # ── Job 3: Frontend Tests ────────────────────────────────────
+  test-frontend:
+    name: "Frontend Tests (Node 20)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Unit I: Language-specific action — set up Node.js
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Unit I: Caching — cache npm modules
+      - name: Cache npm packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('ciforge-web/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install dependencies
+        working-directory: ciforge-web
+        run: npm ci
+
+      - name: Run TypeScript type check
+        working-directory: ciforge-web
+        run: npx tsc --noEmit
+
+      - name: Build Next.js app
+        working-directory: ciforge-web
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+
+  # ── Job 4: Build & Push Docker Images ───────────────────────
+  # Unit I: Docker & GitHub Actions
+  docker:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+
+    # Only build Docker images on push to main (not on PRs)
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push' || github.event.inputs.run_docker_build == 'true'
+
+    # Required permissions to push to GHCR
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Set up Docker Buildx (advanced builder with caching support)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Unit I: Pushing to GitHub Container Registry (GHCR)
+      # Login using GITHUB_TOKEN (automatically provided — no secret needed)
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Extract metadata for image tagging
+      - name: Extract Docker metadata (backend)
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      # Unit I: Building Docker images in CI
+      # Unit II: Uses the Dockerfile we created
+      - name: Build and push Backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          dockerfile: Dockerfile
+          target: runtime           # Multi-stage: use 'runtime' stage
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          # Unit I: Caching Docker layers in CI (GitHub Actions cache)
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract Docker metadata (frontend)
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ciforge-web
+          dockerfile: ciforge-web/Dockerfile
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=http://localhost:8000
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Job 5: Summary ──────────────────────────────────────────
+  summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [lint, test-backend, test-frontend]
+    if: always()                   # Run even if previous jobs failed
+
+    steps:
+      - name: Print pipeline summary
+        run: |
+          echo "## CIForge CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Tests | ${{ needs.test-backend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Tests | ${{ needs.test-frontend.result }} |" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,2 @@
+C:\Users\hp\Desktop\CIForge\venv312\Scripts\Activate.ps1 --- (frontend)
+poetry run uvicorn src.api.server:create_api --factory --host 0.0.0.0 --port 8000 (backend)
